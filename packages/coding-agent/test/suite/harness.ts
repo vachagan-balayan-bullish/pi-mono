@@ -131,6 +131,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 				contextWindow: registeredModel.contextWindow,
 				maxTokens: registeredModel.maxTokens,
 				baseUrl: registeredModel.baseUrl,
+				thinkingLevelMap: registeredModel.thinkingLevelMap,
 			})),
 		});
 	}

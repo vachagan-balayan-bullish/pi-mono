@@ -42,6 +42,7 @@ export interface FauxModelDefinition {
 	cost?: { input: number; output: number; cacheRead: number; cacheWrite: number };
 	contextWindow?: number;
 	maxTokens?: number;
+	thinkingLevelMap?: Model<string>["thinkingLevelMap"];
 }
 
 export type FauxContentBlock = TextContent | ThinkingContent | ToolCall;
@@ -437,6 +438,7 @@ export function createFauxCore(options: RegisterFauxProviderOptions) {
 		cost: definition.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		contextWindow: definition.contextWindow ?? 128000,
 		maxTokens: definition.maxTokens ?? 16384,
+		thinkingLevelMap: definition.thinkingLevelMap,
 	})) as [Model<string>, ...Model<string>[]];
 
 	const stream: StreamFunction<string, StreamOptions> = (requestModel, context, streamOptions) => {
