@@ -9,6 +9,7 @@
 
 ### Fixed
 
+- Fixed thinking level being lost when switching between models with different reasoning tier counts. Name-based clamping only ever clamped down, so going from a model supporting `xhigh` to one without it dropped to `high` and never restored on return. The level is now re-projected by normalised effort (`0 = off`, `1 = max supported`) so intent survives the round-trip ([#6329](https://github.com/earendil-works/pi/issues/6329)).
 - Fixed startup model selection to skip unauthenticated saved defaults so configured local custom models can be selected instead ([#6231](https://github.com/earendil-works/pi/issues/6231)).
 - Fixed Escape aborts to clear runs stuck in extension context hooks that ignore abort signals ([#6234](https://github.com/earendil-works/pi/issues/6234)).
 - Fixed the question extension example to run question tool calls sequentially so multiple questions in one assistant turn remain answerable ([#6189](https://github.com/earendil-works/pi/issues/6189)).

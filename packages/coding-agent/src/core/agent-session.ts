@@ -28,12 +28,14 @@ import type { AssistantMessage, ImageContent, Message, Model, TextContent } from
 import {
 	clampThinkingLevel,
 	cleanupSessionResources,
+	effortToThinkingLevel,
 	getSupportedThinkingLevels,
 	isContextOverflow,
 	isRetryableAssistantError,
 	modelsAreEqual,
 	resetApiProviders,
 	streamSimple,
+	thinkingLevelToEffort,
 } from "@earendil-works/pi-ai/compat";
 import { getThemeByName, theme } from "../modes/interactive/theme/theme.ts";
 import { stripFrontmatter } from "../utils/frontmatter.ts";
@@ -1486,8 +1488,13 @@ export class AgentSession {
 		this.sessionManager.appendModelChange(model.provider, model.id);
 		this.settingsManager.setDefaultModelAndProvider(model.provider, model.id);
 
-		// Re-clamp thinking level for new model's capabilities
-		this.setThinkingLevel(thinkingLevel);
+		// Re-project the thinking level by normalised effort, not by name.
+		// Name-based clamping only ever clamps down: switching from a wider
+		// ladder to a narrower one drops a tier (xhigh -> high), and switching
+		// back keeps it (high is still valid on the wider model), silently
+		// losing the user's "max effort" intent. Effort is invariant across
+		// switches, so projecting it onto the new ladder restores the intent.
+		this.setThinkingLevel(this._thinkingLevelForModelSwitch(previousModel, model, thinkingLevel));
 
 		await this._emitModelSelect(model, previousModel, "set");
 	}
@@ -1516,7 +1523,8 @@ export class AgentSession {
 		const len = scopedModels.length;
 		const nextIndex = direction === "forward" ? (currentIndex + 1) % len : (currentIndex - 1 + len) % len;
 		const next = scopedModels[nextIndex];
-		const thinkingLevel = this._getThinkingLevelForModelSwitch(next.thinkingLevel);
+		const explicitLevel = next.thinkingLevel;
+		const thinkingLevel = this._getThinkingLevelForModelSwitch(explicitLevel);
 
 		// Apply model
 		this.agent.state.model = next.model;
@@ -1525,9 +1533,11 @@ export class AgentSession {
 
 		// Apply thinking level.
 		// - Explicit scoped model thinking level overrides current session level
-		// - Undefined scoped model thinking level inherits the current session preference
-		// setThinkingLevel clamps to model capabilities.
-		this.setThinkingLevel(thinkingLevel);
+		// - Undefined scoped model thinking level inherits the current session preference,
+		//   re-projected by effort so intent survives the ladder-width change.
+		this.setThinkingLevel(
+			this._thinkingLevelForModelSwitch(currentModel, next.model, thinkingLevel, explicitLevel !== undefined),
+		);
 
 		await this._emitModelSelect(next.model, currentModel, "cycle");
 
@@ -1551,8 +1561,8 @@ export class AgentSession {
 		this.sessionManager.appendModelChange(nextModel.provider, nextModel.id);
 		this.settingsManager.setDefaultModelAndProvider(nextModel.provider, nextModel.id);
 
-		// Re-clamp thinking level for new model's capabilities
-		this.setThinkingLevel(thinkingLevel);
+		// Re-project the thinking level by normalised effort (see setModel).
+		this.setThinkingLevel(this._thinkingLevelForModelSwitch(currentModel, nextModel, thinkingLevel));
 
 		await this._emitModelSelect(nextModel, currentModel, "cycle");
 
@@ -1632,6 +1642,28 @@ export class AgentSession {
 			return this.settingsManager.getDefaultThinkingLevel() ?? DEFAULT_THINKING_LEVEL;
 		}
 		return this.thinkingLevel;
+	}
+
+	/**
+	 * Resolve the thinking level to apply after switching from `previousModel`
+	 * to `nextModel`. By default the level is re-projected by normalised effort
+	 * so that intent (e.g. "max effort") survives ladder-width changes:
+	 * xhigh on a 6-level model (effort 1.0) maps to high on a 5-level model
+	 * (also 1.0) and back to xhigh on return. When `explicit` is set the level
+	 * is a user-configured target for `nextModel`, so it is name-clamped to
+	 * validity instead.
+	 */
+	private _thinkingLevelForModelSwitch(
+		previousModel: Model<any> | null | undefined,
+		nextModel: Model<any>,
+		level: ThinkingLevel,
+		explicit = false,
+	): ThinkingLevel {
+		if (explicit || !previousModel) {
+			return clampThinkingLevel(nextModel, level) as ThinkingLevel;
+		}
+		const effort = thinkingLevelToEffort(previousModel, level);
+		return effortToThinkingLevel(nextModel, effort) as ThinkingLevel;
 	}
 
 	private _clampThinkingLevel(level: ThinkingLevel, _availableLevels: ThinkingLevel[]): ThinkingLevel {

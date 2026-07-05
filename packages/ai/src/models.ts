@@ -407,6 +407,33 @@ export function getSupportedThinkingLevels<TApi extends Api>(model: Model<TApi>)
 	});
 }
 
+/**
+ * Normalised reasoning effort in [0, 1]. 0 = off, 1 = the highest tier the
+ * model supports. Because it is relative to each model's own ladder length,
+ * it carries consistent meaning across models with different tier counts
+ * (e.g. a 6-level model's `xhigh` and a 5-level model's `high` are both 1.0).
+ */
+export function thinkingLevelToEffort<TApi extends Api>(model: Model<TApi>, level: ModelThinkingLevel): number {
+	const levels = getSupportedThinkingLevels(model);
+	if (levels.length <= 1) return 0;
+	const index = levels.indexOf(level);
+	if (index < 0) return 0;
+	return index / (levels.length - 1);
+}
+
+/**
+ * Project a normalised effort in [0, 1] back onto a model's supported ladder.
+ * Pairs with `thinkingLevelToEffort` so intent survives model switches:
+ * effort is invariant across switches, only its level-name projection changes.
+ */
+export function effortToThinkingLevel<TApi extends Api>(model: Model<TApi>, effort: number): ModelThinkingLevel {
+	const levels = getSupportedThinkingLevels(model);
+	if (levels.length === 0) return "off";
+	const clamped = Math.max(0, Math.min(1, effort));
+	const index = Math.round(clamped * (levels.length - 1));
+	return levels[index] ?? levels[0] ?? "off";
+}
+
 export function clampThinkingLevel<TApi extends Api>(
 	model: Model<TApi>,
 	level: ModelThinkingLevel,
